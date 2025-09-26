@@ -1,0 +1,8 @@
+{
+  "user_id": "demo-user-123",
+  "title": "Test Book",
+  "author": "Test Author",
+  "total_pages": 300,
+  "genre": "Fiction",
+  "cover_url": "https://example.com/cover.jpg"
+}

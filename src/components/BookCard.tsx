@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Book, Calendar, User, MoreVertical } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import bookCover1 from "@/assets/book-cover-1.jpg";
 
 interface BookCardProps {
   book: {
@@ -14,19 +13,19 @@ interface BookCardProps {
     cover_url?: string;
     total_pages?: number;
     genre?: string;
-    published_year?: number;
   };
   progress?: {
-    current_page: number;
-    status: string;
+    current_page: number | null;
+    status: 'not_started' | 'reading' | 'completed' | 'on_hold' | 'abandoned';
     rating?: number;
   };
   onEdit?: () => void;
   onDelete?: () => void;
   onViewProgress?: () => void;
+  onEditProgress?: () => void;
 }
 
-const BookCard = ({ book, progress, onEdit, onDelete, onViewProgress }: BookCardProps) => {
+const BookCard = ({ book, progress, onEdit, onDelete, onViewProgress, onEditProgress }: BookCardProps) => {
   const progressPercentage = book.total_pages && progress?.current_page 
     ? Math.round((progress.current_page / book.total_pages) * 100) 
     : 0;
@@ -64,6 +63,9 @@ const BookCard = ({ book, progress, onEdit, onDelete, onViewProgress }: BookCard
               <DropdownMenuItem onClick={onViewProgress}>
                 View Progress
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={onEditProgress}>
+                Edit Progress
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={onEdit}>
                 Edit Book
               </DropdownMenuItem>
@@ -78,7 +80,7 @@ const BookCard = ({ book, progress, onEdit, onDelete, onViewProgress }: BookCard
       <CardContent className="pb-4">
         <div className="aspect-[3/4] mb-3 rounded-lg overflow-hidden bg-book-page border border-border/30">
           <img 
-            src={book.cover_url || bookCover1} 
+            src={book.cover_url || "https://via.placeholder.com/200x300/4a5568/ffffff?text=Book+Cover"} 
             alt={`${book.title} cover`}
             className="w-full h-full object-cover"
           />
@@ -90,12 +92,6 @@ const BookCard = ({ book, progress, onEdit, onDelete, onViewProgress }: BookCard
               <Badge variant="outline" className="text-xs">
                 {book.genre}
               </Badge>
-            )}
-            {book.published_year && (
-              <span className="flex items-center gap-1">
-                <Calendar className="w-3 h-3" />
-                {book.published_year}
-              </span>
             )}
           </div>
 

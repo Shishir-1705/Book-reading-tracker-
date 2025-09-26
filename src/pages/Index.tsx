@@ -1,51 +1,44 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
-import AuthForm from "@/components/AuthForm";
 import BookLibrary from "@/components/BookLibrary";
 import LiteratureBot from "@/components/LiteratureBot";
+import AuthForm from "@/components/AuthForm";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { BookOpen, MessageCircle, Library, LogOut, User } from "lucide-react";
+import { BookOpen, MessageCircle, Library, User, LogOut } from "lucide-react";
 
 const Index = () => {
-  const [user, setUser] = useState<any>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const { toast } = useToast();
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
-
-    return () => subscription.unsubscribe();
+    const token = localStorage.getItem('authToken');
+    const storedUser = localStorage.getItem('user');
+    if (token && storedUser) {
+      setIsAuthenticated(true);
+      setUser(JSON.parse(storedUser));
+    }
+    setLoading(false);
   }, []);
 
-  const handleSignOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      toast({
-        title: "Error signing out",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Signed out",
-        description: "Come back soon!",
-      });
-    }
+  const handleAuthSuccess = (token, userData) => {
+    setIsAuthenticated(true);
+    setUser(userData);
+    localStorage.setItem('authToken', token);
+    localStorage.setItem('user', JSON.stringify(userData));
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('user');
+    setIsAuthenticated(false);
+    setUser(null);
+    toast({
+      title: "Logged out",
+      description: "You have been logged out successfully",
+    });
   };
 
   if (loading) {
@@ -59,12 +52,11 @@ const Index = () => {
     );
   }
 
-  if (!user) {
+  if (!isAuthenticated) {
     return (
-      <AuthForm 
-        mode={authMode} 
-        onToggleMode={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} 
-      />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-hero">
+        <AuthForm onAuthSuccess={handleAuthSuccess} />
+      </div>
     );
   }
 
@@ -87,16 +79,10 @@ const Index = () => {
             <div className="flex items-center gap-4">
               <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
                 <User className="w-4 h-4" />
-                <span>Welcome back!</span>
+                <span>Welcome back, {user?.display_name || user?.email}!</span>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleSignOut}
-                className="border-border/50"
-              >
-                <LogOut className="w-4 h-4 mr-2" />
-                Sign Out
+              <Button variant="ghost" size="sm" onClick={handleLogout}>
+                <LogOut className="w-4 h-4" />
               </Button>
             </div>
           </div>

@@ -1,28 +1,48 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
-import { BookOpen, Plus, X } from "lucide-react";
+import { BookOpen, Save, X } from "lucide-react";
 
-interface AddBookFormProps {
-  onBookAdded: () => void;
+interface EditBookFormProps {
+  book: {
+    id: string;
+    title: string;
+    author: string;
+    total_pages?: number;
+    description?: string;
+    genre?: string;
+    cover_url?: string;
+  };
+  onBookUpdated: () => void;
   onCancel: () => void;
 }
 
-const AddBookForm = ({ onBookAdded, onCancel }: AddBookFormProps) => {
+const EditBookForm = ({ book, onBookUpdated, onCancel }: EditBookFormProps) => {
   const [formData, setFormData] = useState({
-    title: '',
-    author: '',
-    total_pages: '',
-    description: '',
-    genre: '',
-    cover_url: ''
+    title: book.title || '',
+    author: book.author || '',
+    total_pages: book.total_pages?.toString() || '',
+    description: book.description || '',
+    genre: book.genre || '',
+    cover_url: book.cover_url || ''
   });
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    setFormData({
+      title: book.title || '',
+      author: book.author || '',
+      total_pages: book.total_pages?.toString() || '',
+      description: book.description || '',
+      genre: book.genre || '',
+      cover_url: book.cover_url || ''
+    });
+  }, [book]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,44 +58,33 @@ const AddBookForm = ({ onBookAdded, onCancel }: AddBookFormProps) => {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('authToken');
-      const storedUser = localStorage.getItem('user');
-      if (!token || !storedUser) {
-        throw new Error('Not authenticated');
-      }
-
-      const user = JSON.parse(storedUser);
-      const userId = user.id;
-
-      const bookData = {
-        user_id: userId,
+      const updateData = {
         title: formData.title.trim(),
         author: formData.author.trim(),
         total_pages: formData.total_pages ? parseInt(formData.total_pages) : null,
         description: formData.description.trim() || null,
         genre: formData.genre.trim() || null,
-        cover_url: formData.cover_url.trim() || "https://via.placeholder.com/200x300/4a5568/ffffff?text=Book+Cover"
+        cover_url: formData.cover_url.trim() || null,
       };
 
-      const response = await fetch('http://localhost:5000/api/books', {
-        method: 'POST',
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`http://localhost:5000/api/books/${book.id}`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify(bookData),
+        body: JSON.stringify(updateData),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to add book');
-      }
+      if (!response.ok) throw new Error('Failed to update book');
 
       toast({
         title: "Success!",
-        description: "Book added to your library",
+        description: "Book updated successfully",
       });
 
-      onBookAdded();
+      onBookUpdated();
     } catch (error: any) {
       toast({
         title: "Error",
@@ -100,8 +109,8 @@ const AddBookForm = ({ onBookAdded, onCancel }: AddBookFormProps) => {
               <BookOpen className="w-5 h-5 text-primary-foreground" />
             </div>
             <div>
-              <CardTitle>Add New Book</CardTitle>
-              <CardDescription>Add a book to your reading library</CardDescription>
+              <CardTitle>Edit Book</CardTitle>
+              <CardDescription>Update book details in your library</CardDescription>
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={onCancel}>
@@ -159,8 +168,6 @@ const AddBookForm = ({ onBookAdded, onCancel }: AddBookFormProps) => {
                 className="bg-input border-border/50"
               />
             </div>
-
-
           </div>
 
           <div className="space-y-2">
@@ -192,8 +199,8 @@ const AddBookForm = ({ onBookAdded, onCancel }: AddBookFormProps) => {
               disabled={loading}
               className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              {loading ? 'Adding...' : 'Add Book'}
+              <Save className="w-4 h-4 mr-2" />
+              {loading ? 'Updating...' : 'Update Book'}
             </Button>
             <Button 
               type="button" 
@@ -210,4 +217,4 @@ const AddBookForm = ({ onBookAdded, onCancel }: AddBookFormProps) => {
   );
 };
 
-export default AddBookForm;
+export default EditBookForm;

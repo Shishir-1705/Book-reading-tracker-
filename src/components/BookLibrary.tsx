@@ -2,11 +2,20 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
-import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, BookOpen, Filter } from "lucide-react";
+import { Plus, Search, BookOpen, Filter, BookOpenText, Calendar, Hash, Book, User } from "lucide-react";
 import BookCard from "./BookCard";
 import AddBookForm from "./AddBookForm";
+import EditBookForm from "./EditBookForm";
+import ProgressEditForm from "./ProgressEditForm";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface Book {
   id: string;
@@ -15,47 +24,188 @@ interface Book {
   cover_url?: string;
   total_pages?: number;
   genre?: string;
-  published_year?: number;
 }
 
 interface Progress {
   book_id: string;
-  current_page: number;
-  status: string;
+  current_page: number | null;
+  completed_date?: string;
+  status: 'not_started' | 'reading' | 'completed' | 'on_hold' | 'abandoned';
   rating?: number;
+  notes?: string;
 }
+
+interface BookDetailsProps {
+  book: Book;
+  progress?: Progress;
+  onClose: () => void;
+}
+
+const BookDetailsModal = ({ book, progress, onClose }: BookDetailsProps) => {
+  const deriveStatus = () => {
+    return progress?.status || 'not_started';
+  };
+
+  const status = deriveStatus();
+
+  return (
+    <Dialog open={true} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BookOpenText className="w-6 h-6" />
+            {book.title}
+          </DialogTitle>
+          <DialogDescription>Book details and reading progress</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-6">
+          {/* Cover Image */}
+          {book.cover_url && (
+            <div className="text-center">
+              <img
+                src={book.cover_url}
+                alt={`${book.title} cover`}
+                className="w-48 h-72 object-cover rounded-lg mx-auto shadow-md"
+              />
+            </div>
+          )}
+
+          {/* Basic Info */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Book className="w-4 h-4 text-muted-foreground" />
+                <span className="font-semibold">Title:</span>
+              </div>
+              <p className="text-lg">{book.title}</p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-muted-foreground" />
+                <span className="font-semibold">Author:</span>
+              </div>
+              <p className="text-lg">{book.author}</p>
+            </div>
+
+            {book.genre && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Hash className="w-4 h-4 text-muted-foreground" />
+                  <span className="font-semibold">Genre:</span>
+                </div>
+                <Badge variant="secondary">{book.genre}</Badge>
+              </div>
+            )}
+
+
+
+            {book.total_pages && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-muted-foreground" />
+                  <span className="font-semibold">Pages:</span>
+                </div>
+                <p>{book.total_pages}</p>
+              </div>
+            )}
+          </div>
+
+
+
+          {/* Reading Progress */}
+          <div className="space-y-4 pt-4 border-t">
+            <h3 className="font-semibold flex items-center gap-2">
+              <BookOpen className="w-4 h-4" />
+              Reading Progress
+            </h3>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>Status:</span>
+                <Badge variant={status === 'completed' ? 'default' : status === 'reading' ? 'secondary' : 'outline'}>
+                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                </Badge>
+              </div>
+              <div className="flex justify-between">
+                <span>Current Page:</span>
+                <span>{progress?.current_page || 0}</span>
+              </div>
+              {book.total_pages && (
+                <div className="flex justify-between">
+                  <span>Progress:</span>
+                  <span>{Math.round((progress?.current_page || 0) / book.total_pages * 100)}%</span>
+                </div>
+              )}
+              {progress?.completed_date && (
+                <div className="flex justify-between">
+                  <span>Completed:</span>
+                  <span>{new Date(progress.completed_date).toLocaleDateString()}</span>
+                </div>
+              )}
+              {progress?.rating && (
+                <div className="flex justify-between">
+                  <span>Rating:</span>
+                  <span>{progress.rating}/5</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 const BookLibrary = () => {
   const [books, setBooks] = useState<Book[]>([]);
   const [progress, setProgress] = useState<Progress[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editingBook, setEditingBook] = useState<Book | null>(null);
+  const [showProgressEdit, setShowProgressEdit] = useState(false);
+  const [editingProgressBookId, setEditingProgressBookId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
   const { toast } = useToast();
 
   const fetchBooks = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const token = localStorage.getItem('authToken');
+      const storedUser = localStorage.getItem('user');
+      if (!token || !storedUser) {
+        throw new Error('Not authenticated');
+      }
 
-      const { data: booksData, error: booksError } = await supabase
-        .from('books')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      const user = JSON.parse(storedUser);
+      const userId = user.id;
 
-      if (booksError) throw booksError;
+      const booksResponse = await fetch(`http://localhost:5000/api/books/${userId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!booksResponse.ok) throw new Error('Failed to fetch books');
+      const booksData = await booksResponse.json();
 
-      const { data: progressData, error: progressError } = await supabase
-        .from('reading_progress')
-        .select('*')
-        .eq('user_id', user.id);
+      const progressResponse = await fetch(`http://localhost:5000/api/reading-progress/${userId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!progressResponse.ok) throw new Error('Failed to fetch progress');
+      const progressData = await progressResponse.json();
 
-      if (progressError) throw progressError;
+      // Map _id to id for consistency
+      const mappedBooks = booksData.map((book: any) => ({
+        ...book,
+        id: book._id
+      }));
 
-      setBooks(booksData || []);
-      setProgress(progressData || []);
+      setBooks(mappedBooks);
+      setProgress(progressData);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -76,6 +226,18 @@ const BookLibrary = () => {
     fetchBooks();
   };
 
+  const handleBookUpdated = () => {
+    setShowEditForm(false);
+    setEditingBook(null);
+    fetchBooks();
+  };
+
+  const handleProgressUpdated = () => {
+    setShowProgressEdit(false);
+    setEditingProgressBookId(null);
+    fetchBooks();
+  };
+
   const getBookProgress = (bookId: string) => {
     return progress.find(p => p.book_id === bookId);
   };
@@ -83,14 +245,14 @@ const BookLibrary = () => {
   const filteredBooks = books.filter(book => {
     const matchesSearch = book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          book.author.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     if (!matchesSearch) return false;
 
     if (statusFilter === 'all') return true;
-    
+
     const bookProgress = getBookProgress(book.id);
     const status = bookProgress?.status || 'not_started';
-    
+
     return status === statusFilter;
   });
 
@@ -98,7 +260,9 @@ const BookLibrary = () => {
     all: books.length,
     reading: progress.filter(p => p.status === 'reading').length,
     completed: progress.filter(p => p.status === 'completed').length,
-    not_started: books.length - progress.length,
+    not_started: books.length - progress.filter(p => p.status !== 'not_started').length,
+    on_hold: progress.filter(p => p.status === 'on_hold').length,
+    abandoned: progress.filter(p => p.status === 'abandoned').length,
   };
 
   if (loading) {
@@ -118,6 +282,18 @@ const BookLibrary = () => {
         <AddBookForm 
           onBookAdded={handleBookAdded} 
           onCancel={() => setShowAddForm(false)} 
+        />
+      </div>
+    );
+  }
+
+  if (showEditForm && editingBook) {
+    return (
+      <div className="py-6">
+        <EditBookForm 
+          book={editingBook}
+          onBookUpdated={handleBookUpdated} 
+          onCancel={() => { setShowEditForm(false); setEditingBook(null); }} 
         />
       </div>
     );
@@ -153,7 +329,7 @@ const BookLibrary = () => {
         </div>
         
         <div className="flex flex-wrap gap-2">
-          <Badge 
+          <Badge
             variant={statusFilter === 'all' ? 'default' : 'outline'}
             className="cursor-pointer"
             onClick={() => setStatusFilter('all')}
@@ -161,21 +337,35 @@ const BookLibrary = () => {
             <Filter className="w-3 h-3 mr-1" />
             All ({statusCounts.all})
           </Badge>
-          <Badge 
+          <Badge
             variant={statusFilter === 'reading' ? 'default' : 'outline'}
             className="cursor-pointer"
             onClick={() => setStatusFilter('reading')}
           >
             Reading ({statusCounts.reading})
           </Badge>
-          <Badge 
+          <Badge
             variant={statusFilter === 'completed' ? 'default' : 'outline'}
             className="cursor-pointer"
             onClick={() => setStatusFilter('completed')}
           >
             Completed ({statusCounts.completed})
           </Badge>
-          <Badge 
+          <Badge
+            variant={statusFilter === 'on_hold' ? 'default' : 'outline'}
+            className="cursor-pointer"
+            onClick={() => setStatusFilter('on_hold')}
+          >
+            On Hold ({statusCounts.on_hold})
+          </Badge>
+          <Badge
+            variant={statusFilter === 'abandoned' ? 'default' : 'outline'}
+            className="cursor-pointer"
+            onClick={() => setStatusFilter('abandoned')}
+          >
+            Abandoned ({statusCounts.abandoned})
+          </Badge>
+          <Badge
             variant={statusFilter === 'not_started' ? 'default' : 'outline'}
             className="cursor-pointer"
             onClick={() => setStatusFilter('not_started')}
@@ -216,20 +406,71 @@ const BookLibrary = () => {
               book={book}
               progress={getBookProgress(book.id)}
               onViewProgress={() => {
-                // TODO: Implement progress view
-                toast({ title: "Coming soon", description: "Progress details view" });
+                setSelectedBook(book);
+                setShowDetails(true);
               }}
               onEdit={() => {
-                // TODO: Implement edit
-                toast({ title: "Coming soon", description: "Edit book functionality" });
+                setEditingBook(book);
+                setShowEditForm(true);
               }}
-              onDelete={() => {
-                // TODO: Implement delete
-                toast({ title: "Coming soon", description: "Delete book functionality" });
+              onEditProgress={() => {
+                setEditingProgressBookId(book.id);
+                setShowProgressEdit(true);
+              }}
+              onDelete={async () => {
+                if (confirm('Are you sure you want to delete this book?')) {
+                  try {
+                    const token = localStorage.getItem('authToken');
+                    const response = await fetch(`http://localhost:5000/api/books/${book.id}`, {
+                      method: 'DELETE',
+                      headers: {
+                        'Authorization': `Bearer ${token}`,
+                      },
+                    });
+
+                    if (!response.ok) throw new Error('Failed to delete book');
+
+                    toast({
+                      title: "Success",
+                      description: "Book deleted successfully",
+                    });
+                    fetchBooks(); // Refresh the list
+                  } catch (error: any) {
+                    toast({
+                      title: "Error",
+                      description: "Failed to delete book",
+                      variant: "destructive",
+                    });
+                  }
+                }
               }}
             />
           ))}
         </div>
+      )}
+
+      {selectedBook && showDetails && (
+        <BookDetailsModal
+          book={selectedBook}
+          progress={getBookProgress(selectedBook.id)}
+          onClose={() => {
+            setShowDetails(false);
+            setSelectedBook(null);
+          }}
+        />
+      )}
+
+      {showProgressEdit && editingProgressBookId && (
+        <Dialog open={showProgressEdit} onOpenChange={() => setShowProgressEdit(false)}>
+          <DialogContent className="max-w-md">
+            <ProgressEditForm
+              bookId={editingProgressBookId}
+              initialProgress={getBookProgress(editingProgressBookId)}
+              onProgressUpdated={handleProgressUpdated}
+              onCancel={() => setShowProgressEdit(false)}
+            />
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

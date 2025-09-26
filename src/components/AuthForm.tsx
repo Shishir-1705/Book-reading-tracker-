@@ -4,56 +4,74 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-import { supabase } from "@/integrations/supabase/client";
-import { BookOpen, LogIn, UserPlus } from "lucide-react";
+import { User, LogIn } from "lucide-react";
 
 interface AuthFormProps {
-  mode: 'login' | 'signup';
-  onToggleMode: () => void;
+  onAuthSuccess: (token: string, user: any) => void;
 }
 
-const AuthForm = ({ mode, onToggleMode }: AuthFormProps) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
+const AuthForm = ({ onAuthSuccess }: AuthFormProps) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    display_name: ''
+  });
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.email.trim() || !formData.password.trim()) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isLogin && !formData.display_name.trim()) {
+      toast({
+        title: "Error",
+        description: "Display name is required for registration",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
-      if (mode === 'signup') {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              display_name: displayName || email.split('@')[0]
-            }
-          }
-        });
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+      const body = isLogin
+        ? { email: formData.email, password: formData.password }
+        : { email: formData.email, password: formData.password, display_name: formData.display_name };
 
-        if (error) throw error;
+      const response = await fetch(`http://localhost:5000${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
 
-        toast({
-          title: "Account created!",
-          description: "Welcome to your reading journey.",
-        });
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+      const data = await response.json();
 
-        if (error) throw error;
-
-        toast({
-          title: "Welcome back!",
-          description: "Ready to continue reading?",
-        });
+      if (!response.ok) {
+        throw new Error(data.error || 'Authentication failed');
       }
+
+      // Store token in localStorage
+      localStorage.setItem('authToken', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+
+      toast({
+        title: "Success!",
+        description: isLogin ? "Logged in successfully" : "Account created successfully",
+      });
+
+      onAuthSuccess(data.token, data.user);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -65,105 +83,91 @@ const AuthForm = ({ mode, onToggleMode }: AuthFormProps) => {
     }
   };
 
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-hero p-4">
-      <Card className="w-full max-w-md bg-gradient-card border-border/50 shadow-2xl">
-        <CardHeader className="space-y-4 text-center">
-          <div className="mx-auto w-12 h-12 bg-primary rounded-full flex items-center justify-center">
-            <BookOpen className="w-6 h-6 text-primary-foreground" />
+    <Card className="max-w-md mx-auto bg-gradient-card border-border/50">
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
+            {isLogin ? <LogIn className="w-5 h-5 text-primary-foreground" /> : <User className="w-5 h-5 text-primary-foreground" />}
           </div>
           <div>
-            <CardTitle className="text-2xl font-bold">
-              {mode === 'login' ? 'Welcome Back' : 'Start Reading'}
-            </CardTitle>
-            <CardDescription className="text-muted-foreground">
-              {mode === 'login' 
-                ? 'Continue your literary journey' 
-                : 'Create your personal reading tracker'
-              }
+            <CardTitle>{isLogin ? 'Sign In' : 'Create Account'}</CardTitle>
+            <CardDescription>
+              {isLogin ? 'Welcome back to Readwise Litbot' : 'Join Readwise Litbot to manage your books'}
             </CardDescription>
           </div>
-        </CardHeader>
+        </div>
+      </CardHeader>
 
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {mode === 'signup' && (
-              <div className="space-y-2">
-                <Label htmlFor="displayName">Display Name</Label>
-                <Input
-                  id="displayName"
-                  type="text"
-                  placeholder="Your name"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className="bg-input border-border/50"
-                />
-              </div>
-            )}
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="email">Email *</Label>
+            <Input
+              id="email"
+              type="email"
+              value={formData.email}
+              onChange={(e) => handleInputChange('email', e.target.value)}
+              placeholder="your@email.com"
+              required
+              className="bg-input border-border/50"
+            />
+          </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="password">Password *</Label>
+            <Input
+              id="password"
+              type="password"
+              value={formData.password}
+              onChange={(e) => handleInputChange('password', e.target.value)}
+              placeholder="Enter your password"
+              required
+              className="bg-input border-border/50"
+            />
+          </div>
+
+          {!isLogin && (
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="display_name">Display Name *</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="name@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="display_name"
+                value={formData.display_name}
+                onChange={(e) => handleInputChange('display_name', e.target.value)}
+                placeholder="Your display name"
                 required
                 className="bg-input border-border/50"
               />
             </div>
+          )}
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                className="bg-input border-border/50"
-              />
-            </div>
-
-            <Button 
-              type="submit" 
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-              disabled={loading}
-            >
-              {loading ? (
-                "Loading..."
-              ) : mode === 'login' ? (
-                <>
-                  <LogIn className="w-4 h-4 mr-2" />
-                  Sign In
-                </>
-              ) : (
-                <>
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  Create Account
-                </>
-              )}
-            </Button>
-          </form>
-
-          <div className="mt-6 text-center">
+          <div className="flex gap-3 pt-4">
             <Button
-              variant="ghost"
-              onClick={onToggleMode}
-              className="text-muted-foreground hover:text-foreground"
+              type="submit"
+              disabled={loading}
+              className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
             >
-              {mode === 'login' 
-                ? "Don't have an account? Sign up" 
-                : "Already have an account? Sign in"
-              }
+              {loading ? (isLogin ? 'Signing In...' : 'Creating Account...') : (isLogin ? 'Sign In' : 'Create Account')}
             </Button>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+
+          <div className="text-center pt-2">
+            <Button
+              type="button"
+              variant="link"
+              onClick={() => setIsLogin(!isLogin)}
+              className="text-sm"
+            >
+              {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 };
 

@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/components/ui/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { Send, BookOpen, Bot, User } from "lucide-react";
 
 interface Message {
@@ -50,15 +49,22 @@ const LiteratureBot = () => {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('ai', {
-        body: { message: userMessage.content }
-      });
+      // Mock AI response for demo purposes
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
 
-      if (error) throw error;
+      const mockResponses = [
+        "That's an interesting question about literature! Let me think about that...",
+        "Great point! In many classic novels, themes of identity and self-discovery play a crucial role.",
+        "I recommend exploring works by authors who tackle similar themes. Would you like some suggestions?",
+        "Literature often reflects the societal context in which it was written. What period interests you most?",
+        "Character development is key in storytelling. How do you think this character evolves throughout the narrative?"
+      ];
+
+      const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
 
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: data.response,
+        content: randomResponse,
         sender: 'bot',
         timestamp: new Date()
       };

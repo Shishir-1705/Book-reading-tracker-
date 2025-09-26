@@ -23,7 +23,6 @@ export type Database = {
           genre: string | null
           id: string
           isbn: string | null
-          published_year: number | null
           title: string
           total_pages: number | null
           updated_at: string
@@ -37,7 +36,6 @@ export type Database = {
           genre?: string | null
           id?: string
           isbn?: string | null
-          published_year?: number | null
           title: string
           total_pages?: number | null
           updated_at?: string
@@ -51,7 +49,6 @@ export type Database = {
           genre?: string | null
           id?: string
           isbn?: string | null
-          published_year?: number | null
           title?: string
           total_pages?: number | null
           updated_at?: string
@@ -96,7 +93,7 @@ export type Database = {
           notes: string | null
           rating: number | null
           started_date: string | null
-          status: string
+          status: 'not_started' | 'reading' | 'completed' | 'on_hold' | 'abandoned'
           updated_at: string
           user_id: string
         }
@@ -109,7 +106,7 @@ export type Database = {
           notes?: string | null
           rating?: number | null
           started_date?: string | null
-          status?: string
+          status?: 'not_started' | 'reading' | 'completed' | 'on_hold' | 'abandoned'
           updated_at?: string
           user_id: string
         }
@@ -122,7 +119,7 @@ export type Database = {
           notes?: string | null
           rating?: number | null
           started_date?: string | null
-          status?: string
+          status?: 'not_started' | 'reading' | 'completed' | 'on_hold' | 'abandoned'
           updated_at?: string
           user_id?: string
         }
