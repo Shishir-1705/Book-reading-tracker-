@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/components/ui/use-toast";
 import { Send, BookOpen, Bot, User } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Message {
   id: string;
@@ -49,26 +50,13 @@ const LiteratureBot = () => {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('authToken');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
-
-      const response = await fetch('http://localhost:5000/api/ai/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ message: inputMessage.trim() }),
+      const { data, error } = await supabase.functions.invoke('ai', {
+        body: { message: inputMessage.trim() }
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to get AI response');
+      if (error) {
+        throw new Error(error.message || 'Failed to get AI response');
       }
-
-      const data = await response.json();
 
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
