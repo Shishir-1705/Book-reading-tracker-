@@ -49,22 +49,30 @@ const LiteratureBot = () => {
     setLoading(true);
 
     try {
-      // Mock AI response for demo purposes
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
 
-      const mockResponses = [
-        "That's an interesting question about literature! Let me think about that...",
-        "Great point! In many classic novels, themes of identity and self-discovery play a crucial role.",
-        "I recommend exploring works by authors who tackle similar themes. Would you like some suggestions?",
-        "Literature often reflects the societal context in which it was written. What period interests you most?",
-        "Character development is key in storytelling. How do you think this character evolves throughout the narrative?"
-      ];
+      const response = await fetch('http://localhost:5000/api/ai/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ message: inputMessage.trim() }),
+      });
 
-      const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to get AI response');
+      }
+
+      const data = await response.json();
 
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: randomResponse,
+        content: data.response,
         sender: 'bot',
         timestamp: new Date()
       };
@@ -73,7 +81,7 @@ const LiteratureBot = () => {
     } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to get response from literature bot",
+        description: error.message || "Failed to get response from literature bot",
         variant: "destructive",
       });
       console.error('Literature bot error:', error);
