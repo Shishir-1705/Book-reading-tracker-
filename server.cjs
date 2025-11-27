@@ -3,21 +3,59 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    const allowedOrigins = [
+      process.env.FRONTEND_URL || 'http://localhost:5173',
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:3000',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:5174'
+    ];
+    if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all origins for now
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
-// MongoDB connection
-mongoose.connect('mongodb://localhost:27017/readwise_litbot')
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
+// Log all requests for debugging
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path} - Origin: ${req.headers.origin || 'none'}`);
+  next();
+});
 
-// JWT Secret - In production, use environment variable
-const JWT_SECRET = 'your_jwt_secret_key_here_change_in_production';
+// MongoDB connection
+// If MONGODB_URI doesn't include a database name, append /readwise_litbot
+let MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/readwise_litbot';
+if (MONGODB_URI && !MONGODB_URI.match(/\/[^\/]+$/)) {
+  // If URI ends with / or has no database name, append database name
+  MONGODB_URI = MONGODB_URI.replace(/\/$/, '') + '/readwise_litbot';
+}
+
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('Connected to MongoDB:', MONGODB_URI))
+  .catch(err => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
+  });
+
+// JWT Secret - Use environment variable or default
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key_here_change_in_production';
 
 // User Schema
 const userSchema = new mongoose.Schema({
@@ -69,11 +107,11 @@ app.post('/api/auth/register', async (req, res) => {
     });
     const savedUser = await user.save();
 
-    // Generate JWT
+    // Generate JWT - convert _id to string for consistency
     const token = jwt.sign(
-      { user_id: savedUser._id },
+      { user_id: savedUser._id.toString() },
       JWT_SECRET,
-      { expiresIn: '1h' }
+      { expiresIn: '24h' } // Extended to 24 hours for better UX
     );
 
     res.status(201).json({
@@ -105,11 +143,11 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
 
-    // Generate JWT
+    // Generate JWT - convert _id to string for consistency
     const token = jwt.sign(
-      { user_id: user._id },
+      { user_id: user._id.toString() },
       JWT_SECRET,
-      { expiresIn: '1h' }
+      { expiresIn: '24h' } // Extended to 24 hours for better UX
     );
 
     res.json({
@@ -136,7 +174,16 @@ const authenticateToken = (req, res, next) => {
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) {
-      return res.status(403).json({ error: 'Invalid token' });
+      console.error('Token verification error:', err.message);
+      console.error('Error type:', err.name);
+      console.error('Token (first 20 chars):', token ? token.substring(0, 20) + '...' : 'null');
+      
+      if (err.name === 'TokenExpiredError') {
+        return res.status(403).json({ error: 'Token expired. Please login again.' });
+      } else if (err.name === 'JsonWebTokenError') {
+        return res.status(403).json({ error: 'Invalid token format. Please login again.' });
+      }
+      return res.status(403).json({ error: 'Invalid token: ' + err.message });
     }
     req.user = user;
     next();
@@ -146,11 +193,18 @@ const authenticateToken = (req, res, next) => {
 // Routes
 app.post('/api/books', authenticateToken, async (req, res) => {
   try {
-    const bookData = { ...req.body, user_id: req.user.user_id };
+    // Use user_id from JWT token (already ObjectId)
+    // Remove user_id from body if present to avoid conflicts
+    const { user_id, ...bookFields } = req.body;
+    const bookData = { 
+      ...bookFields,
+      user_id: new mongoose.Types.ObjectId(req.user.user_id)
+    };
     const book = new Book(bookData);
     const savedBook = await book.save();
     res.status(201).json(savedBook);
   } catch (error) {
+    console.error('Error creating book:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -300,6 +354,77 @@ app.put('/api/profiles/:userId', authenticateToken, async (req, res) => {
     res.json(updatedProfile);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// AI Chat Endpoint using Google Gemini API
+app.post('/api/ai/chat', authenticateToken, async (req, res) => {
+  try {
+    const { message } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ error: "Message is required" });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey || apiKey === 'your_gemini_api_key_here') {
+      // Mock response if no API key
+      const mockResponses = [
+        "That's a fascinating literary topic! What specific aspect would you like to explore further?",
+        "Literature offers endless insights into the human experience. Tell me more about your thoughts.",
+        "Great question about books! Many classics deal with similar themes. Have you read any related works?",
+        "Character analysis is one of my favorite literary discussions. What drew you to this particular character?",
+        "Book recommendations are my specialty! Based on your interests, I suggest exploring works by similar authors."
+      ];
+      const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
+      return res.json({ response: randomResponse });
+    }
+
+    // System prompt for literature expert
+    const systemPrompt = "You are a knowledgeable literature companion and book discussion expert. You help readers discover themes, analyze literary works, discuss authors, and enhance their reading experience. You can discuss plot elements, character development, writing styles, historical context, and recommend similar books. Always be encouraging about reading and provide thoughtful, scholarly insights while keeping the conversation engaging and accessible.";
+
+    // Call Google Gemini API
+    const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: `${systemPrompt}\n\nUser: ${message}`
+          }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 1024,
+        },
+      }),
+    });
+
+    if (!geminiResponse.ok) {
+      console.error("Gemini API error:", await geminiResponse.text());
+      if (geminiResponse.status === 429) {
+        return res.status(429).json({ error: "Rate limit exceeded" });
+      }
+      return res.status(500).json({ error: "Failed to get AI response" });
+    }
+
+    const data = await geminiResponse.json();
+    const aiMessage = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!aiMessage) {
+      console.error("No response from Gemini", data);
+      return res.status(500).json({ error: "No response from AI" });
+    }
+
+    res.json({ response: aiMessage.trim() });
+  } catch (error) {
+    console.error("Error in AI call:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

@@ -57,17 +57,41 @@ const AddBookForm = ({ onBookAdded, onCancel }: AddBookFormProps) => {
         cover_url: formData.cover_url.trim() || "https://via.placeholder.com/200x300/4a5568/ffffff?text=Book+Cover"
       };
 
-      const response = await fetch('http://localhost:5000/api/books', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(bookData),
-      });
+      let response;
+      try {
+        console.log('Sending request to:', 'http://localhost:5000/api/books');
+        console.log('With token:', token ? 'Present' : 'Missing');
+        response = await fetch('http://localhost:5000/api/books', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(bookData),
+          mode: 'cors',
+          credentials: 'include'
+        });
+        console.log('Response status:', response.status, response.statusText);
+      } catch (networkError: any) {
+        // Handle network errors (server not running, CORS, etc.)
+        console.error('Network error details:', {
+          message: networkError.message,
+          name: networkError.name,
+          stack: networkError.stack
+        });
+        throw new Error('Cannot connect to server. Please make sure the backend server is running on port 5000. Error: ' + (networkError.message || 'Connection refused'));
+      }
 
       if (!response.ok) {
-        throw new Error('Failed to add book');
+        const errorText = await response.text();
+        let errorMessage = 'Failed to add book';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
       toast({

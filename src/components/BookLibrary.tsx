@@ -185,31 +185,59 @@ const BookLibrary = () => {
       const booksResponse = await fetch(`http://localhost:5000/api/books/${userId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
       });
-      if (!booksResponse.ok) throw new Error('Failed to fetch books');
+      
+      if (!booksResponse.ok) {
+        const errorText = await booksResponse.text();
+        let errorMessage = 'Failed to fetch books';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+      
       const booksData = await booksResponse.json();
 
       const progressResponse = await fetch(`http://localhost:5000/api/reading-progress/${userId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
       });
-      if (!progressResponse.ok) throw new Error('Failed to fetch progress');
-      const progressData = await progressResponse.json();
+      
+      if (!progressResponse.ok) {
+        const errorText = await progressResponse.text();
+        let errorMessage = 'Failed to fetch progress';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        // Progress is optional, so we don't throw here, just log
+        console.warn('Failed to fetch progress:', errorMessage);
+      } else {
+        const progressData = await progressResponse.json();
+        setProgress(progressData);
+      }
 
       // Map _id to id for consistency
       const mappedBooks = booksData.map((book: any) => ({
         ...book,
-        id: book._id
+        id: book._id || book.id
       }));
 
       setBooks(mappedBooks);
-      setProgress(progressData);
     } catch (error: any) {
+      console.error('Error fetching books:', error);
       toast({
         title: "Error",
-        description: "Failed to load books",
+        description: error.message || "Failed to load books. Please check your connection and try again.",
         variant: "destructive",
       });
     } finally {
